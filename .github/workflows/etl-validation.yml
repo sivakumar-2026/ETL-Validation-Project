@@ -30,45 +30,48 @@ jobs:
 
     env:
       RUN_TYPE: CI Push
-      # DB
-      MSSQL_HOST: ${{ secrets.MSSQL_HOST }}
-      MSSQL_PORT: ${{ secrets.MSSQL_PORT }}
-      MSSQL_DATABASE: ${{ secrets.MSSQL_DATABASE }}
+      # DB (defaults avoid empty-string secrets breaking ports)
+      MSSQL_HOST: ${{ secrets.MSSQL_HOST || 'localhost' }}
+      MSSQL_PORT: ${{ secrets.MSSQL_PORT || '1433' }}
+      MSSQL_DATABASE: ${{ secrets.MSSQL_DATABASE || 'Sourcedb' }}
       MSSQL_USER: ${{ secrets.MSSQL_USER }}
       MSSQL_PASSWORD: ${{ secrets.MSSQL_PASSWORD }}
-      MSSQL_DRIVER: ${{ secrets.MSSQL_DRIVER }}
+      MSSQL_DRIVER: ${{ secrets.MSSQL_DRIVER || 'ODBC Driver 18 for SQL Server' }}
       MSSQL_TRUST_SERVER_CERTIFICATE: "yes"
-      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
-      POSTGRES_DATABASE: ${{ secrets.POSTGRES_DATABASE }}
+      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+      POSTGRES_DATABASE: ${{ secrets.POSTGRES_DATABASE || 'Targetdb' }}
       POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-      SRC_TABLE: ${{ secrets.SRC_TABLE }}
-      TGT_TABLE: ${{ secrets.TGT_TABLE }}
-      PRIMARY_KEY: ${{ secrets.PRIMARY_KEY }}
+      SRC_TABLE: ${{ secrets.SRC_TABLE || 'dbo.Album' }}
+      TGT_TABLE: ${{ secrets.TGT_TABLE || 'public.album' }}
+      PRIMARY_KEY: ${{ secrets.PRIMARY_KEY || 'ALBUMID' }}
       MSSQL_JDBC_JAR: ${{ secrets.MSSQL_JDBC_JAR }}
       POSTGRES_JDBC_JAR: ${{ secrets.POSTGRES_JDBC_JAR }}
       # Email
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
-      ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+      ALERT_EMAIL: ${{ secrets.ALERT_EMAIL || 'sivakumartorur@gmail.com' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show runner Python
+      - name: Create clean virtualenv
         run: |
-          which python3
-          python3 --version
+          python3 -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/python -m pip install --upgrade pip
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
+          python -m pip uninstall -y numpy || true
+          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir --force-reinstall "numpy>=1.26"
+          python -c "import numpy, pandas; print('numpy', numpy.__version__, 'pandas', pandas.__version__)"
 
       - name: Write .env from secrets (for python-dotenv)
         run: |
@@ -79,45 +82,47 @@ jobs:
             echo "MSSQL_DATABASE=${MSSQL_DATABASE}"
             echo "MSSQL_USER=${MSSQL_USER}"
             echo "MSSQL_PASSWORD=${MSSQL_PASSWORD}"
-            echo "MSSQL_DRIVER=${MSSQL_DRIVER:-ODBC Driver 18 for SQL Server}"
+            echo "MSSQL_DRIVER=${MSSQL_DRIVER}"
             echo "MSSQL_TRUST_SERVER_CERTIFICATE=yes"
             echo "POSTGRES_HOST=${POSTGRES_HOST}"
             echo "POSTGRES_PORT=${POSTGRES_PORT}"
             echo "POSTGRES_DATABASE=${POSTGRES_DATABASE}"
             echo "POSTGRES_USER=${POSTGRES_USER}"
             echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-            echo "SRC_TABLE=${SRC_TABLE:-dbo.Album}"
-            echo "TGT_TABLE=${TGT_TABLE:-public.album}"
-            echo "PRIMARY_KEY=${PRIMARY_KEY:-ALBUMID}"
+            echo "SRC_TABLE=${SRC_TABLE}"
+            echo "TGT_TABLE=${TGT_TABLE}"
+            echo "PRIMARY_KEY=${PRIMARY_KEY}"
             echo "MSSQL_JDBC_JAR=${MSSQL_JDBC_JAR}"
             echo "POSTGRES_JDBC_JAR=${POSTGRES_JDBC_JAR}"
-            echo "SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}"
-            echo "SMTP_PORT=${SMTP_PORT:-587}"
+            echo "SMTP_HOST=${SMTP_HOST}"
+            echo "SMTP_PORT=${SMTP_PORT}"
             echo "SMTP_USER=${SMTP_USER}"
             echo "SMTP_PASSWORD=${SMTP_PASSWORD}"
-            echo "SMTP_FROM=${SMTP_FROM}"
-            echo "ALERT_EMAIL=${ALERT_EMAIL:-sivakumartorur@gmail.com}"
+            echo "SMTP_FROM=${SMTP_FROM:-$SMTP_USER}"
+            echo "ALERT_EMAIL=${ALERT_EMAIL}"
           } > .env
 
       - name: Run validation suite
         id: validate
         run: |
           set +e
-          python3 jenkins/ci_validate.py
+          python jenkins/ci_validate.py
           code=$?
+          mkdir -p reports
           echo $code > reports/exit_code.txt
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Build email + PDF
+        if: always()
         run: |
           export RUN_TYPE="CI Push"
-          python3 jenkins/build_email.py || true
-          python3 jenkins/build_pdf.py
+          python jenkins/build_email.py || true
+          python jenkins/build_pdf.py
 
       - name: Send email report
         if: always()
-        run: python3 jenkins/send_email.py
+        run: python jenkins/send_email.py
 
       - name: Upload report artifacts
         if: always()

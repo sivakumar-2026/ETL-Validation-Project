@@ -30,10 +30,11 @@ PDF_PATH = REPORT_DIR / "validation_report.pdf"
 def main() -> int:
     user = os.getenv("SMTP_USER", "").strip()
     password = os.getenv("SMTP_PASSWORD", "").strip()
-    host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
-    port = int(os.getenv("SMTP_PORT", "587"))
-    to_addr = os.getenv("ALERT_EMAIL", "sivakumartorur@gmail.com").strip()
-    from_addr = os.getenv("SMTP_FROM", user).strip()
+    host = (os.getenv("SMTP_HOST") or "smtp.gmail.com").strip() or "smtp.gmail.com"
+    # Secrets may be set to "" which bypasses the default in os.getenv(..., "587")
+    port = int((os.getenv("SMTP_PORT") or "587").strip() or "587")
+    to_addr = (os.getenv("ALERT_EMAIL") or "sivakumartorur@gmail.com").strip()
+    from_addr = (os.getenv("SMTP_FROM") or user).strip()
 
     if not user or not password:
         print(

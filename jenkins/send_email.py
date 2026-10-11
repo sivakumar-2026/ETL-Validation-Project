@@ -89,13 +89,15 @@ def main() -> int:
         else:
             print("WARNING: No PDF/HTML attachment — sending body only")
 
-    context = ssl.create_default_context()
     try:
         import certifi
 
-        context.load_verify_locations(certifi.where())
+        cafile = certifi.where()
+        os.environ.setdefault("SSL_CERT_FILE", cafile)
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", cafile)
+        context = ssl.create_default_context(cafile=cafile)
     except Exception:
-        pass
+        context = ssl.create_default_context()
 
     with smtplib.SMTP(host, port, timeout=60) as server:
         server.ehlo()

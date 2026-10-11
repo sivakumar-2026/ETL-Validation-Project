@@ -15,29 +15,58 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fingerprint import (  # noqa: E402
-    REPORT_DIR,
-    capture_fingerprint,
-    compare_with_previous,
-    promote_previous,
-    save_current,
-)
-from dashboard import reporter  # noqa: E402
-from dashboard.render import render_html  # noqa: E402
-from dashboard.timeutil import now_ist_label  # noqa: E402
-
+REPORT_DIR = ROOT / "reports"
 HTML_PATH = REPORT_DIR / "validation_dashboard.html"
 SUMMARY_PATH = REPORT_DIR / "validation_summary.json"
 
 
 def _write_report(report: dict) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    HTML_PATH.write_text(render_html(report), encoding="utf-8")
+    try:
+        from dashboard.render import render_html
+
+        HTML_PATH.write_text(render_html(report), encoding="utf-8")
+    except Exception as exc:
+        HTML_PATH.write_text(
+            f"<html><body><pre>HTML render failed: {exc}\n\n{json.dumps(report, indent=2)}</pre></body></html>",
+            encoding="utf-8",
+        )
     SUMMARY_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 
 def main() -> int:
-    import pytest
+    try:
+        from fingerprint import (
+            capture_fingerprint,
+            compare_with_previous,
+            promote_previous,
+            save_current,
+        )
+        from dashboard import reporter
+        from dashboard.timeutil import now_ist_label
+        import pytest
+    except Exception as exc:
+        report = {
+            "generated_at": "",
+            "totals": {"total": 0, "passed": 0, "failed": 1, "skipped": 0},
+            "tests": [
+                {
+                    "nodeid": "ci_validate",
+                    "suite": "runner",
+                    "name": "import_error",
+                    "status": "failed",
+                    "duration_s": 0,
+                    "log": f"{exc}\n{traceback.format_exc()}",
+                    "samples": {},
+                }
+            ],
+            "db_fingerprint": {},
+            "db_changed": False,
+            "error": str(exc),
+        }
+        _write_report(report)
+        print(f"CI_VALIDATE_IMPORT_ERROR={exc}")
+        return 2
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     reporter.reset()

@@ -56,53 +56,49 @@ jobs:
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       ALERT_EMAIL: ${{ secrets.ALERT_EMAIL || 'sivakumartorur@gmail.com' }}
-      VENV_PY: ${{ github.workspace }}/.venv/bin/python
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create arm64 virtualenv
+      - name: Select Python (prefer known-good arm64 venv)
+        id: py
         run: |
           set -euo pipefail
-          echo "uname=$(uname -m) arch=$(arch)"
-          CANDIDATES=(
-            /Library/Frameworks/Python.framework/Versions/3.13/bin/python3
-            /Library/Frameworks/Python.framework/Versions/3.12/bin/python3
-            /opt/homebrew/bin/python3
-            "$(command -v python3)"
-          )
-          BASE_PY=""
-          for c in "${CANDIDATES[@]}"; do
-            if [ -x "$c" ]; then
-              mach="$("$c" -c 'import platform; print(platform.machine())' 2>/dev/null || true)"
-              echo "candidate $c -> $mach"
-              if [ "$mach" = "arm64" ]; then
-                BASE_PY="$c"
-                break
-              fi
-              if [ -z "$BASE_PY" ]; then BASE_PY="$c"; fi
-            fi
-          done
-          echo "BASE_PY=$BASE_PY"
-          # Reuse venv when possible (faster). Recreate if python missing.
-          if [ ! -x .venv/bin/python ]; then
-            if [ "$(uname -m)" = "arm64" ]; then
-              arch -arm64 "$BASE_PY" -m venv .venv
-            else
-              "$BASE_PY" -m venv .venv
+          echo "uname=$(uname -m)"
+          # Prefer the Mac venv that already works for manual runs
+          if [ -x "$HOME/venv/bin/python" ]; then
+            mach="$("$HOME/venv/bin/python" -c 'import platform; print(platform.machine())')"
+            if [ "$mach" = "arm64" ]; then
+              echo "Using HOME/venv (arm64)"
+              echo "python=$HOME/venv/bin/python" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
           fi
-          "$VENV_PY" -c 'import platform,sys; print(sys.executable, platform.machine(), sys.version)'
-          "$VENV_PY" -m pip install -U pip setuptools wheel
+          BASE_PY="/Library/Frameworks/Python.framework/Versions/3.13/bin/python3"
+          [ -x "$BASE_PY" ] || BASE_PY="$(command -v python3)"
+          echo "Recreating clean arm64 .venv from $BASE_PY"
+          rm -rf .venv
+          arch -arm64 "$BASE_PY" -m venv .venv
+          echo "python=${GITHUB_WORKSPACE}/.venv/bin/python" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
           set -euo pipefail
+          PY="${{ steps.py.outputs.python }}"
+          echo "PY=$PY"
+          arch -arm64 "$PY" -c 'import platform,sys; print(sys.executable, platform.machine())'
           export PIP_PREFER_BINARY=1
-          export PIP_ONLY_BINARY="cryptography,cffi,numpy,pandas"
-          "$VENV_PY" -m pip install -r requirements.txt
-          "$VENV_PY" -c "import dotenv, numpy, pandas, pytest; print('imports ok')"
+          arch -arm64 "$PY" -m pip install -U pip setuptools wheel
+          arch -arm64 "$PY" -m pip install -r requirements.txt
+          arch -arm64 "$PY" -c "import numpy, pandas, pytest, dotenv; print('imports ok', numpy.__version__)"
+          # Sanity: numpy must be arm64 on Apple Silicon
+          arch -arm64 "$PY" - <<'PY'
+          import numpy, pathlib
+          so = pathlib.Path(numpy.__file__).parent / "_core" / "_multiarray_umath.cpython-313-darwin.so"
+          # file may vary by version; just import is enough if arch -arm64 works
+          print("numpy import under arm64 OK")
+          PY
 
       - name: Set run type from event
         run: |
@@ -176,7 +172,8 @@ jobs:
             exit 0
           fi
           # 15-min poll: only when fingerprint changed
-          "$VENV_PY" jenkins/poll_gate.py
+          PY="${{ steps.py.outputs.python }}"
+          arch -arm64 "$PY" jenkins/poll_gate.py
           code=$?
           if [ "$code" -eq 3 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -192,7 +189,8 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         run: |
           set +e
-          "$VENV_PY" jenkins/ci_validate.py
+          PY="${{ steps.py.outputs.python }}"
+          arch -arm64 "$PY" jenkins/ci_validate.py
           code=$?
           mkdir -p reports
           echo "$code" > reports/exit_code.txt
@@ -204,8 +202,9 @@ jobs:
       - name: Build email + PDF report
         if: always() && steps.gate.outputs.skip != 'true'
         run: |
-          "$VENV_PY" jenkins/build_email.py || true
-          "$VENV_PY" jenkins/build_pdf.py || true
+          PY="${{ steps.py.outputs.python }}"
+          arch -arm64 "$PY" jenkins/build_email.py || true
+          arch -arm64 "$PY" jenkins/build_pdf.py || true
           ls -la reports
           echo "----- email body preview -----"
           head -40 reports/email_body.txt || true
@@ -213,7 +212,8 @@ jobs:
       - name: Send data validation report email
         if: always() && steps.gate.outputs.skip != 'true'
         run: |
-          "$VENV_PY" jenkins/send_email.py
+          PY="${{ steps.py.outputs.python }}"
+          arch -arm64 "$PY" jenkins/send_email.py
 
       - name: Upload report artifacts
         if: always() && steps.gate.outputs.skip != 'true'

@@ -69,7 +69,7 @@ class TestDuplicateCounts:
 class TestNullCounts:
     """Validate null counts in target data."""
 
-    MANDATORY_COLUMNS = ["MOVIEID", "MOVIETITLE", "RELEASEYEAR", "DIRECTOR"]
+    MANDATORY_COLUMNS = ["ALBUMID", "TITLE", "ARTISTID"]
 
     @pytest.mark.parametrize("column", MANDATORY_COLUMNS)
     def test_mandatory_columns_have_no_nulls(self, get_data, column):

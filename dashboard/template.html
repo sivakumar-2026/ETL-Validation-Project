@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ETL Data Validation Dashboard</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg-2: #0d1a2e;
+      --card: rgba(18, 32, 56, 0.88);
+      --stroke: rgba(232, 197, 71, 0.18);
+      --text: #f4f1ea;
+      --muted: #93a4c0;
+      --gold: #e8c547;
+      --pass: #3ee0a2;
+      --fail: #ff6b7a;
+      --skip: #7aa2ff;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Segoe UI", "Avenir Next", Inter, system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #1b3a5f 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #3a2a12 0%, transparent 50%),
+        linear-gradient(180deg, var(--bg), var(--bg-2));
+    }
+    .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 22px 64px; }
+    header {
+      display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      align-items: flex-end; margin-bottom: 28px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.85rem;
+      letter-spacing: 0.02em;
+    }
+    .sub { color: var(--muted); font-size: 0.95rem; }
+    .stamp {
+      color: var(--gold);
+      font-size: 0.82rem;
+      padding: 8px 12px;
+      border: 1px solid var(--stroke);
+      border-radius: 999px;
+      background: rgba(232, 197, 71, 0.08);
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .kpi {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+    }
+    .kpi .label { color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.12em; }
+    .kpi .value { font-size: 2.4rem; font-weight: 700; margin-top: 8px; }
+    .kpi.total .value { color: var(--gold); }
+    .kpi.pass .value { color: var(--pass); }
+    .kpi.fail .value { color: var(--fail); }
+    .chart-row {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+    canvas { display: block; margin: 0 auto; }
+    .legend { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+    .legend-item { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .chip {
+      border: 1px solid var(--stroke);
+      background: transparent;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    .chip.active { background: rgba(232, 197, 71, 0.16); border-color: var(--gold); color: var(--gold); }
+    .search {
+      flex: 1;
+      min-width: 180px;
+      background: rgba(7, 17, 31, 0.6);
+      border: 1px solid var(--stroke);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 14px;
+    }
+    h2 { margin: 28px 0 12px; font-size: 1.15rem; }
+    h2.fail { color: var(--fail); }
+    h2.pass { color: var(--pass); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .card-h {
+      display: flex; justify-content: space-between; gap: 12px; align-items: center;
+      padding: 14px 16px; cursor: pointer;
+    }
+    .badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 4px 8px;
+      border-radius: 999px;
+    }
+    .badge.failed { background: rgba(255, 107, 122, 0.18); color: var(--fail); }
+    .badge.passed { background: rgba(62, 224, 162, 0.16); color: var(--pass); }
+    .badge.skipped { background: rgba(122, 162, 255, 0.16); color: var(--skip); }
+    .meta { color: var(--muted); font-size: 0.8rem; }
+    .body { display: none; padding: 0 16px 16px; }
+    .card.open .body { display: block; }
+    pre {
+      white-space: pre-wrap;
+      background: #071018;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      overflow: auto;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 16px;
+      font-size: 0.82rem;
+    }
+    th, td {
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th { color: var(--gold); font-weight: 600; }
+    .empty { color: var(--muted); padding: 12px 4px; }
+    @media (max-width: 800px) {
+      .kpis, .chart-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>ETL Data Validation Dashboard</h1>
+        <div class="sub">Source vs target checks · fail logs first · 5 sample rows per test</div>
+      </div>
+      <div class="stamp" id="stamp"></div>
+    </header>
+
+    <section class="kpis">
+      <article class="kpi total"><div class="label">Total Tests</div><div class="value" id="kpi-total">0</div></article>
+      <article class="kpi pass"><div class="label">Pass Count</div><div class="value" id="kpi-pass">0</div></article>
+      <article class="kpi fail"><div class="label">Fail Count</div><div class="value" id="kpi-fail">0</div></article>
+    </section>
+
+    <section class="chart-row">
+      <div class="panel"><canvas id="chart" width="240" height="240"></canvas></div>
+      <div class="panel legend" id="legend"></div>
+    </section>
+
+    <div class="toolbar">
+      <button class="chip active" data-filter="all">All</button>
+      <button class="chip" data-filter="failed">Failed</button>
+      <button class="chip" data-filter="passed">Passed</button>
+      <input class="search" id="search" placeholder="Search test name or log…" />
+    </div>
+
+    <h2 class="fail" id="fail-heading">Failed</h2>
+    <div id="fail-list"></div>
+    <h2 class="pass" id="pass-heading">Passed</h2>
+    <div id="pass-list"></div>
+    <h2 id="skip-heading" style="color:var(--skip)">Skipped</h2>
+    <div id="skip-list"></div>
+  </div>
+
+  <script id="report-data" type="application/json">__REPORT_JSON__</script>
+  <script>
+    const data = JSON.parse(document.getElementById("report-data").textContent);
+    const totals = data.totals;
+    document.getElementById("kpi-total").textContent = totals.total;
+    document.getElementById("kpi-pass").textContent = totals.passed;
+    document.getElementById("kpi-fail").textContent = totals.failed;
+    document.getElementById("stamp").textContent = "Generated: " + (data.generated_at || "");
+
+    function drawDonut() {
+      const canvas = document.getElementById("chart");
+      const ctx = canvas.getContext("2d");
+      const slices = [
+        { label: "Pass", value: totals.passed, color: "#3ee0a2" },
+        { label: "Fail", value: totals.failed, color: "#ff6b7a" },
+        { label: "Skip", value: totals.skipped, color: "#7aa2ff" },
+      ];
+      const sum = slices.reduce((a, s) => a + s.value, 0) || 1;
+      let start = -Math.PI / 2;
+      const cx = canvas.width / 2, cy = canvas.height / 2, r = 88;
+      slices.forEach((s) => {
+        const angle = (s.value / sum) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, start, start + angle);
+        ctx.closePath();
+        ctx.fillStyle = s.color;
+        ctx.fill();
+        start += angle;
+      });
+      ctx.beginPath();
+      ctx.arc(cx, cy, 54, 0, Math.PI * 2);
+      ctx.fillStyle = "#121c38";
+      ctx.fill();
+      ctx.fillStyle = "#f4f1ea";
+      ctx.font = "700 28px Segoe UI";
+      ctx.textAlign = "center";
+      ctx.fillText(String(totals.total), cx, cy + 4);
+      ctx.fillStyle = "#93a4c0";
+      ctx.font = "12px Segoe UI";
+      ctx.fillText("tests", cx, cy + 22);
+
+      document.getElementById("legend").innerHTML = slices.map((s) =>
+        `<div class="legend-item"><span class="dot" style="background:${s.color}"></span>${s.label}: <strong style="color:#f4f1ea;margin-left:6px">${s.value}</strong></div>`
+      ).join("");
+    }
+    drawDonut();
+
+    function tableHtml(table) {
+      if (!table || !table.columns) return "";
+      const head = table.columns.map((c) => `<th>${escapeHtml(c)}</th>`).join("");
+      const body = (table.rows || []).map((row) =>
+        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`
+      ).join("");
+      return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function cardHtml(test) {
+      const samples = Object.entries(test.samples || {}).map(([title, table]) =>
+        `<div class="meta" style="margin-top:12px;color:var(--gold)">${escapeHtml(title)}</div>${tableHtml(table)}`
+      ).join("");
+      const showLog = test.status !== "failed" || !Object.keys(test.samples || {}).length;
+      return `<article class="card" data-status="${test.status}" data-text="${escapeHtml((test.name + " " + test.suite + " " + test.log).toLowerCase())}">
+        <div class="card-h">
+          <div>
+            <span class="badge ${test.status}">${test.status.toUpperCase()}</span>
+            <strong style="margin-left:8px">${escapeHtml(test.name)}</strong>
+            <div class="meta">${escapeHtml(test.suite)} · ${test.duration_s}s</div>
+          </div>
+          <div class="meta">expand</div>
+        </div>
+        <div class="body">
+          ${showLog ? `<pre>${escapeHtml(test.log || "")}</pre>` : ""}
+          ${samples}
+        </div>
+      </article>`;
+    }
+
+    const failed = data.tests.filter((t) => t.status === "failed");
+    const passed = data.tests.filter((t) => t.status === "passed");
+    const skipped = data.tests.filter((t) => t.status === "skipped");
+    document.getElementById("fail-list").innerHTML = failed.map(cardHtml).join("") || `<div class="empty">No failures.</div>`;
+    document.getElementById("pass-list").innerHTML = passed.map(cardHtml).join("") || `<div class="empty">No passing tests.</div>`;
+    document.getElementById("skip-list").innerHTML = skipped.map(cardHtml).join("") || `<div class="empty">No skipped tests.</div>`;
+    document.getElementById("fail-heading").textContent = `Failed (${failed.length})`;
+    document.getElementById("pass-heading").textContent = `Passed (${passed.length})`;
+    document.getElementById("skip-heading").textContent = `Skipped (${skipped.length})`;
+
+    document.querySelectorAll(".card-h").forEach((el) => {
+      el.addEventListener("click", () => el.parentElement.classList.toggle("open"));
+    });
+    document.querySelectorAll(".card[data-status='failed']").forEach((el) => el.classList.add("open"));
+
+    let filter = "all";
+    const search = document.getElementById("search");
+    function applyFilter() {
+      const q = search.value.trim().toLowerCase();
+      document.querySelectorAll(".card").forEach((card) => {
+        const statusOk = filter === "all" || card.dataset.status === filter;
+        const textOk = !q || (card.dataset.text || "").includes(q);
+        card.style.display = statusOk && textOk ? "" : "none";
+      });
+    }
+    document.querySelectorAll(".chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        filter = chip.dataset.filter;
+        applyFilter();
+      });
+    });
+    search.addEventListener("input", applyFilter);
+  </script>
+</body>
+</html>

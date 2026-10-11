@@ -3,3 +3,7 @@ pytest
 psycopg2-binary
 pyodbc
 sqlalchemy
+python-dotenv
+pyspark
+certifi
+xhtml2pdf

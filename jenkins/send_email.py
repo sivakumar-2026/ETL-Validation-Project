@@ -16,7 +16,8 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-load_dotenv(ROOT / ".env")
+# override=True: .env wins over empty GitHub Actions secret env vars
+load_dotenv(ROOT / ".env", override=True)
 
 from run_meta import write_meta  # noqa: E402
 

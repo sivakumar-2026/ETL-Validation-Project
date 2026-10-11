@@ -100,56 +100,46 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          {
-            echo "MSSQL_HOST=${MSSQL_HOST}"
-            echo "MSSQL_PORT=${MSSQL_PORT}"
-            echo "MSSQL_DATABASE=${MSSQL_DATABASE}"
-            echo "MSSQL_USER=${MSSQL_USER}"
-            echo "MSSQL_PASSWORD=${MSSQL_PASSWORD}"
-            echo "MSSQL_DRIVER=${MSSQL_DRIVER}"
-            echo "MSSQL_TRUST_SERVER_CERTIFICATE=yes"
-            echo "POSTGRES_HOST=${POSTGRES_HOST}"
-            echo "POSTGRES_PORT=${POSTGRES_PORT}"
-            echo "POSTGRES_DATABASE=${POSTGRES_DATABASE}"
-            echo "POSTGRES_USER=${POSTGRES_USER}"
-            echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-            echo "SRC_TABLE=${SRC_TABLE}"
-            echo "TGT_TABLE=${TGT_TABLE}"
-            echo "PRIMARY_KEY=${PRIMARY_KEY}"
-            echo "MSSQL_JDBC_JAR=${MSSQL_JDBC_JAR}"
-            echo "POSTGRES_JDBC_JAR=${POSTGRES_JDBC_JAR}"
-            echo "SMTP_HOST=${SMTP_HOST}"
-            echo "SMTP_PORT=${SMTP_PORT}"
-            echo "SMTP_USER=${SMTP_USER}"
-            echo "SMTP_PASSWORD=${SMTP_PASSWORD}"
-            echo "SMTP_FROM=${SMTP_FROM:-$SMTP_USER}"
-            echo "ALERT_EMAIL=${ALERT_EMAIL}"
-          } > .env
 
-          # Self-hosted convenience: fill blanks from a local env file (never commit this)
-          for local_env in \
-            "$HOME/.etl_validation.env" \
-            "$HOME/ETL_Python/.env"
-          do
-            if [ -f "$local_env" ]; then
-              echo "Merging non-empty keys from $local_env"
-              while IFS= read -r line || [ -n "$line" ]; do
-                case "$line" in
-                  ''|\#*) continue ;;
-                esac
-                key="${line%%=*}"
-                val="${line#*=}"
-                # If current .env has empty value for this key, replace it
-                if grep -q "^${key}=$" .env 2>/dev/null || grep -q "^${key}=[[:space:]]*$" .env 2>/dev/null; then
-                  # escape for sed
-                  esc=$(printf '%s' "$val" | sed 's/[\/&]/\\&/g')
-                  sed -i.bak "s/^${key}=.*/${key}=${esc}/" .env
-                fi
-              done < "$local_env"
-              rm -f .env.bak
+          # If GitHub SMTP secrets are blank, use local Mac env (self-hosted only)
+          LOCAL_ENV=""
+          for candidate in "$HOME/.etl_validation.env" "$HOME/ETL_Python/.env"; do
+            if [ -f "$candidate" ]; then
+              LOCAL_ENV="$candidate"
               break
             fi
           done
+
+          if [ -z "${SMTP_USER:-}" ] && [ -n "$LOCAL_ENV" ]; then
+            echo "SMTP secrets empty — copying $LOCAL_ENV -> .env"
+            cp "$LOCAL_ENV" .env
+          else
+            {
+              echo "MSSQL_HOST=${MSSQL_HOST}"
+              echo "MSSQL_PORT=${MSSQL_PORT}"
+              echo "MSSQL_DATABASE=${MSSQL_DATABASE}"
+              echo "MSSQL_USER=${MSSQL_USER}"
+              echo "MSSQL_PASSWORD=${MSSQL_PASSWORD}"
+              echo "MSSQL_DRIVER=${MSSQL_DRIVER}"
+              echo "MSSQL_TRUST_SERVER_CERTIFICATE=yes"
+              echo "POSTGRES_HOST=${POSTGRES_HOST}"
+              echo "POSTGRES_PORT=${POSTGRES_PORT}"
+              echo "POSTGRES_DATABASE=${POSTGRES_DATABASE}"
+              echo "POSTGRES_USER=${POSTGRES_USER}"
+              echo "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+              echo "SRC_TABLE=${SRC_TABLE}"
+              echo "TGT_TABLE=${TGT_TABLE}"
+              echo "PRIMARY_KEY=${PRIMARY_KEY}"
+              echo "MSSQL_JDBC_JAR=${MSSQL_JDBC_JAR}"
+              echo "POSTGRES_JDBC_JAR=${POSTGRES_JDBC_JAR}"
+              echo "SMTP_HOST=${SMTP_HOST}"
+              echo "SMTP_PORT=${SMTP_PORT}"
+              echo "SMTP_USER=${SMTP_USER}"
+              echo "SMTP_PASSWORD=${SMTP_PASSWORD}"
+              echo "SMTP_FROM=${SMTP_FROM:-$SMTP_USER}"
+              echo "ALERT_EMAIL=${ALERT_EMAIL}"
+            } > .env
+          fi
 
           echo "SMTP_USER set? $([ -n "$(grep '^SMTP_USER=' .env | cut -d= -f2-)" ] && echo yes || echo NO)"
           echo "SMTP_PASSWORD set? $([ -n "$(grep '^SMTP_PASSWORD=' .env | cut -d= -f2-)" ] && echo yes || echo NO)"

@@ -13,7 +13,8 @@ from pyspark.sql import SparkSession
 from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parent
-load_dotenv(ROOT / ".env")
+# override=True: workspace .env wins over empty GitHub Actions secret env vars
+load_dotenv(ROOT / ".env", override=True)
 
 
 def _require(name: str) -> str:

@@ -96,8 +96,9 @@ jobs:
           "$VENV_PY" -m pip install -r requirements.txt
           "$VENV_PY" -c "import dotenv, numpy, pandas, pytest; print('imports ok')"
 
-      - name: Write .env from secrets
+      - name: Write .env from secrets (fallback to local Mac file)
         run: |
+          set -euo pipefail
           umask 077
           {
             echo "MSSQL_HOST=${MSSQL_HOST}"
@@ -124,6 +125,34 @@ jobs:
             echo "SMTP_FROM=${SMTP_FROM:-$SMTP_USER}"
             echo "ALERT_EMAIL=${ALERT_EMAIL}"
           } > .env
+
+          # Self-hosted convenience: fill blanks from a local env file (never commit this)
+          for local_env in \
+            "$HOME/.etl_validation.env" \
+            "$HOME/ETL_Python/.env"
+          do
+            if [ -f "$local_env" ]; then
+              echo "Merging non-empty keys from $local_env"
+              while IFS= read -r line || [ -n "$line" ]; do
+                case "$line" in
+                  ''|\#*) continue ;;
+                esac
+                key="${line%%=*}"
+                val="${line#*=}"
+                # If current .env has empty value for this key, replace it
+                if grep -q "^${key}=$" .env 2>/dev/null || grep -q "^${key}=[[:space:]]*$" .env 2>/dev/null; then
+                  # escape for sed
+                  esc=$(printf '%s' "$val" | sed 's/[\/&]/\\&/g')
+                  sed -i.bak "s/^${key}=.*/${key}=${esc}/" .env
+                fi
+              done < "$local_env"
+              rm -f .env.bak
+              break
+            fi
+          done
+
+          echo "SMTP_USER set? $([ -n "$(grep '^SMTP_USER=' .env | cut -d= -f2-)" ] && echo yes || echo NO)"
+          echo "SMTP_PASSWORD set? $([ -n "$(grep '^SMTP_PASSWORD=' .env | cut -d= -f2-)" ] && echo yes || echo NO)"
 
       - name: Run validation suite
         id: validate

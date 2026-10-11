@@ -38,4 +38,4 @@ GitHub-hosted runners cannot reach DBs on your laptop.
 1. Repo → **Settings → Actions → Runners → New self-hosted runner**
 2. Choose **macOS**, follow install steps on the Mac where Docker SQL/Postgres run
 3. Keep the runner process online (`./run.sh` or install as service)
-4. Push to `main` / `cursor/**` → workflow runs → email with PDF
+4. Push to `main` / `etl-db-migration-project` → workflow runs → email with PDF

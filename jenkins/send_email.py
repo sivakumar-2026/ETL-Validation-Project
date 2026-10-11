@@ -44,9 +44,19 @@ def main() -> int:
         )
         return 2
 
+    # Ensure body/subject exist even if earlier steps failed
+    if not BODY_PATH.exists() or not SUBJECT_PATH.exists():
+        print("email_body/subject missing — building now")
+        from build_email import main as build_email_main
+
+        build_email_main()
+
     if not BODY_PATH.exists():
-        print(f"Missing {BODY_PATH}. Run: python3 jenkins/build_email.py")
-        return 1
+        BODY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        BODY_PATH.write_text(
+            "ETL QA Validation Report\n\nNo email body was produced. See Actions logs.",
+            encoding="utf-8",
+        )
 
     body = BODY_PATH.read_text(encoding="utf-8")
     meta = write_meta()

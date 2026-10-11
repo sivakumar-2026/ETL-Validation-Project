@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Detect source/target DB changes even without a git push (UTC cron)
+  schedule:
+    - cron: "*/15 * * * *"
 
 concurrency:
   group: etl-validation-${{ github.ref }}
@@ -21,6 +24,7 @@ jobs:
         shell: bash
 
     env:
+      # Default; overridden per event below
       RUN_TYPE: CI Push
       MSSQL_HOST: ${{ secrets.MSSQL_HOST || 'localhost' }}
       MSSQL_PORT: ${{ secrets.MSSQL_PORT || '1433' }}
@@ -96,6 +100,14 @@ jobs:
           "$VENV_PY" -m pip install -r requirements.txt
           "$VENV_PY" -c "import dotenv, numpy, pandas, pytest; print('imports ok')"
 
+      - name: Set run type from event
+        run: |
+          case "${{ github.event_name }}" in
+            schedule) echo "RUN_TYPE=Automatic Validation" >> "$GITHUB_ENV" ;;
+            workflow_dispatch) echo "RUN_TYPE=Manual" >> "$GITHUB_ENV" ;;
+            *) echo "RUN_TYPE=CI Push" >> "$GITHUB_ENV" ;;
+          esac
+
       - name: Write .env from secrets (fallback to local Mac file)
         run: |
           set -euo pipefail
@@ -144,8 +156,24 @@ jobs:
           echo "SMTP_USER set? $([ -n "$(grep '^SMTP_USER=' .env | cut -d= -f2-)" ] && echo yes || echo NO)"
           echo "SMTP_PASSWORD set? $([ -n "$(grep '^SMTP_PASSWORD=' .env | cut -d= -f2-)" ] && echo yes || echo NO)"
 
+      - name: Poll gate (schedule only — skip if DB unchanged)
+        id: gate
+        if: github.event_name == 'schedule'
+        run: |
+          set +e
+          "$VENV_PY" jenkins/poll_gate.py
+          code=$?
+          if [ "$code" -eq 3 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No DB fingerprint change — skipping validation/email"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
       - name: Run validation suite
         id: validate
+        if: steps.gate.outputs.skip != 'true'
         run: |
           set +e
           "$VENV_PY" jenkins/ci_validate.py
@@ -155,17 +183,18 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Build email + PDF
-        if: always()
+      - name: Build email + PDF report
+        if: always() && steps.gate.outputs.skip != 'true'
         run: |
-          export RUN_TYPE="CI Push"
           "$VENV_PY" jenkins/build_email.py || true
           "$VENV_PY" jenkins/build_pdf.py || true
+          ls -la reports || true
 
-      - name: Send email report
-        if: always()
+      - name: Send data validation report email
+        if: always() && steps.gate.outputs.skip != 'true'
         run: |
           "$VENV_PY" jenkins/send_email.py
+          echo "Custom report email attempted (subject ETL QA Validation Report - ...)"
 
       - name: Upload report artifacts
         if: always()
@@ -181,7 +210,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Fail job if tests failed
-        if: always()
+        if: always() && steps.gate.outputs.skip != 'true'
         run: |
           code=$(cat reports/exit_code.txt 2>/dev/null || echo 1)
           if [ "$code" != "0" ]; then

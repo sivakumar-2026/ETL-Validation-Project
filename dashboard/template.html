@@ -262,7 +262,6 @@
       const samples = Object.entries(test.samples || {}).map(([title, table]) =>
         `<div class="meta" style="margin-top:12px;color:var(--gold)">${escapeHtml(title)}</div>${tableHtml(table)}`
       ).join("");
-      const showLog = test.status !== "failed" || !Object.keys(test.samples || {}).length;
       return `<article class="card" data-status="${test.status}" data-text="${escapeHtml((test.name + " " + test.suite + " " + test.log).toLowerCase())}">
         <div class="card-h">
           <div>
@@ -273,7 +272,8 @@
           <div class="meta">expand</div>
         </div>
         <div class="body">
-          ${showLog ? `<pre>${escapeHtml(test.log || "")}</pre>` : ""}
+          <div class="meta">Log</div>
+          <pre>${escapeHtml(test.log || "Passed")}</pre>
           ${samples}
         </div>
       </article>`;
@@ -293,6 +293,12 @@
       el.addEventListener("click", () => el.parentElement.classList.toggle("open"));
     });
     document.querySelectorAll(".card[data-status='failed']").forEach((el) => el.classList.add("open"));
+    // PDF export: open every card so pass + fail logs are visible
+    if (new URLSearchParams(location.search).has("print")) {
+      document.querySelectorAll(".card").forEach((el) => el.classList.add("open"));
+      const tb = document.querySelector(".toolbar");
+      if (tb) tb.style.display = "none";
+    }
 
     let filter = "all";
     const search = document.getElementById("search");

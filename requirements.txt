@@ -7,3 +7,4 @@ python-dotenv
 pyspark
 certifi
 xhtml2pdf
+playwright

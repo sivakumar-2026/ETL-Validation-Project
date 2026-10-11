@@ -1,4 +1,4 @@
-"""Build clean email body + subject from validation_summary.json."""
+"""Build plain-text email body with all pass + fail test logs."""
 
 from __future__ import annotations
 
@@ -39,28 +39,53 @@ def _pick_failure_tables(failed_tests: list[dict]) -> dict:
     return {}
 
 
+def _test_block(tests: list[dict], heading: str) -> list[str]:
+    lines = ["", heading, "-" * len(heading)]
+    if not tests:
+        lines.append("(none)")
+        return lines
+    for i, t in enumerate(tests, 1):
+        lines.append(f"{i}. {t.get('suite')}.{t.get('name')}")
+        lines.append(f"   Status  : {t.get('status')}")
+        lines.append(f"   Duration: {t.get('duration_s')}s")
+        log = (t.get("log") or "Passed").strip().replace("\n", "\n   ")
+        lines.append(f"   Log     : {log}")
+        lines.append("")
+    return lines
+
+
 def build_from_summary(data: dict) -> tuple[str, str, int]:
     t = data.get("totals", {})
-    failed = [x for x in data.get("tests", []) if x.get("status") == "failed"]
+    tests = data.get("tests", [])
+    failed = [x for x in tests if x.get("status") == "failed"]
+    passed = [x for x in tests if x.get("status") == "passed"]
+    skipped = [x for x in tests if x.get("status") == "skipped"]
     fp = data.get("db_fingerprint", {})
     meta = write_meta()
     run_type = meta["run_type"]
     fail_n = int(t.get("failed", 0))
+    status = "FAILED" if fail_n else "PASSED"
 
     lines = [
         "ETL QA Validation Report",
         "=" * 40,
+        f"Status   : {status}",
         f"Run type : {run_type}",
         f"Generated: {data.get('generated_at', now_ist_label())}",
-        f"Total    : {t.get('total', 0)}",
-        f"Pass     : {t.get('passed', 0)}",
-        f"Fail     : {fail_n}",
-        f"Skip     : {t.get('skipped', 0)}",
         "",
-        "Source: "
+        "SUMMARY",
+        "-------",
+        f"Total : {t.get('total', 0)}",
+        f"Pass  : {t.get('passed', 0)}",
+        f"Fail  : {fail_n}",
+        f"Skip  : {t.get('skipped', 0)}",
+        "",
+        "DATA FINGERPRINT",
+        "----------------",
+        "Source : "
         f"{fp.get('source', {}).get('table')} | rows={fp.get('source', {}).get('count')} | "
         f"max_pk={fp.get('source', {}).get('max_pk')}",
-        "Target: "
+        "Target : "
         f"{fp.get('target', {}).get('table')} | rows={fp.get('target', {}).get('count')} | "
         f"max_pk={fp.get('target', {}).get('max_pk')}",
     ]
@@ -68,25 +93,23 @@ def build_from_summary(data: dict) -> tuple[str, str, int]:
     if fp.get("error"):
         lines += ["", f"Fingerprint/DB error: {fp.get('error')}"]
 
-    if failed:
-        lines += ["", "Failed tests", "-" * 12]
-        for f in failed:
-            lines.append(f"• {f.get('suite')}.{f.get('name')}")
+    lines += _test_block(failed, f"FAILED TESTS ({len(failed)})")
+    lines += _test_block(passed, f"PASSED TESTS ({len(passed)})")
+    if skipped:
+        lines += _test_block(skipped, f"SKIPPED TESTS ({len(skipped)})")
 
-        tables = _pick_failure_tables(failed)
-        if tables:
-            lines += ["", "Failure details (once)"]
-            for title in (
-                "Failure items — Only in TARGET",
-                "Failure items — Only in SOURCE",
-                "Failure items — Value mismatch",
-            ):
-                if title in tables:
-                    lines += _table_block(title, tables[title])
-    else:
-        lines += ["", "All tests passed." if fail_n == 0 else "No per-test failure details available."]
+    tables = _pick_failure_tables(failed)
+    if tables:
+        lines += ["", "FAILURE DATA (once)", "-------------------"]
+        for title in (
+            "Failure items — Only in TARGET",
+            "Failure items — Only in SOURCE",
+            "Failure items — Value mismatch",
+        ):
+            if title in tables:
+                lines += _table_block(title, tables[title])
 
-    lines += ["", "PDF report attached when available: validation_report.pdf"]
+    lines += ["", "Color PDF attached (same as browser HTML dashboard): validation_report.pdf"]
     return "\n".join(lines), meta["subject"], fail_n
 
 
@@ -97,13 +120,14 @@ def build_error_body(message: str) -> tuple[str, str]:
         [
             "ETL QA Validation Report",
             "=" * 40,
+            "Status   : FAILED",
             f"Run type : {run_type}",
             f"Generated: {now_ist_label()}",
             "",
             "Validation could not produce a full summary.",
             f"Detail: {message}",
             "",
-            "Check the GitHub Actions log for the Validate step.",
+            "Check the GitHub Actions / local validate log.",
         ]
     )
     return body, subject

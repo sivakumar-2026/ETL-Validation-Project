@@ -33,13 +33,13 @@ IST = ZoneInfo("Asia/Kolkata")
 
 
 def _is_daily_window() -> bool:
-    """True for the scheduled Daily RUN slot (10:00–10:14 IST)."""
+    """True for the scheduled Daily RUN slot (08:00–08:14 IST)."""
     if os.getenv("DAILY_RUN", "").strip() in {"1", "true", "TRUE", "yes"}:
         return True
     if os.getenv("FORCE_FULL", "").strip() in {"1", "true", "TRUE", "yes"}:
         return True
     now = datetime.now(IST)
-    return now.hour == 10 and now.minute < 15
+    return now.hour == 8 and now.minute < 15
 
 
 def main() -> int:

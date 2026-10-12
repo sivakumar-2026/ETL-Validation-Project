@@ -10,7 +10,7 @@ pipeline {
   // 15-min DB poll removed. Git push CI is handled by GitHub Actions
   // (.github/workflows/etl-validation.yml). Jenkins keeps Daily RUN only.
   triggers {
-    cron('TZ=Asia/Kolkata\n0 10 * * *')
+    cron('TZ=Asia/Kolkata\n0 8 * * *')
   }
 
   parameters {

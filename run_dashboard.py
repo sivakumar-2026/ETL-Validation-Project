@@ -10,7 +10,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -32,14 +31,10 @@ def _run(script: str, env: dict) -> int:
 
 def main() -> int:
     env = os.environ.copy()
-    env.setdefault("RUN_TYPE", "Manual")
+    # Cursor / terminal run is always Manual, even if the DB fingerprint changed.
+    env["RUN_TYPE"] = "Manual"
 
     code = _run("ci_validate.py", env)
-
-    summary = ROOT / "reports" / "validation_summary.json"
-    if summary.exists():
-        if json.loads(summary.read_text(encoding="utf-8")).get("db_changed"):
-            env["RUN_TYPE"] = "Automatic Validation"
 
     if HTML_PATH.exists():
         webbrowser.open(HTML_PATH.resolve().as_uri())

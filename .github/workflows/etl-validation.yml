@@ -3,7 +3,7 @@
 # Triggers (all send the same ETL QA Validation Report email + PDF):
 #   - push / PR          → Run type: CI Push
 #   - workflow_dispatch  → Run type: Manual
-#   - schedule 10:00 IST → Run type: Daily RUN
+#   - schedule 08:00 IST → Run type: Daily RUN
 #   - schedule every 15m → Run type: Automatic Validation (only if DB fingerprint changed)
 name: ETL QA Validation
 
@@ -14,8 +14,8 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    # 10:00 IST = 04:30 UTC
-    - cron: "30 4 * * *"
+    # 08:00 IST = 02:30 UTC
+    - cron: "30 2 * * *"
     # Every 15 minutes (UTC) for source/target change detection
     - cron: "*/15 * * * *"
 
@@ -103,9 +103,10 @@ jobs:
       - name: Set run type from event
         run: |
           EVENT="${{ github.event_name }}"
-          # Daily 10:00 IST window ≈ cron 30 4 * * * (UTC). GitHub can drift a few minutes.
-          UTC_HM=$(date -u +%H%M)
-          if [ "$EVENT" = "schedule" ] && [ "$UTC_HM" -ge 0425 ] && [ "$UTC_HM" -le 0440 ]; then
+          # Daily 08:00 IST ≈ cron 30 2 * * * (UTC). GitHub can drift a few minutes.
+          # 10# strips leading zeros so 0230 is not treated as octal.
+          UTC_HM=$((10#$(date -u +%H%M)))
+          if [ "$EVENT" = "schedule" ] && [ "$UTC_HM" -ge 225 ] && [ "$UTC_HM" -le 244 ]; then
             echo "RUN_TYPE=Daily RUN" >> "$GITHUB_ENV"
           elif [ "$EVENT" = "schedule" ]; then
             echo "RUN_TYPE=Automatic Validation" >> "$GITHUB_ENV"
